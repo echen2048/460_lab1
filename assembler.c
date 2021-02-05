@@ -116,3 +116,72 @@ int toNum( char * pStr )
 	exit(4);  /* This has been changed from error code 3 to error code 4, see clarification 12 */
    }
 }
+
+int isOpCode(char * opcode){
+  if(strcmp(opcode, "add")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "and")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "br")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "brn")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "brz")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "brp")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "brnz")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "brzp")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "brnp")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "brnzp")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "jmp")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "jsr")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "ldb")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "ldw")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "lea")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "rti")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "shf")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "stb")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "stw")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "trap")==0){
+    return 0;
+  }
+  else if(strcmp(opcode, "xor")==0){
+    return 0;
+  }
+  else{
+    return -1;
+  }
+}
