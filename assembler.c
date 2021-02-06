@@ -139,9 +139,6 @@ void firstPass(FILE * lInfile){
 
     int lRet;
     int PC = 0, i = 0;
-    //FILE * lInfile;
-
-    //lInfile = fopen( "data.in", "r" );	/* open the input file */
 
     do
     {
@@ -154,11 +151,10 @@ void firstPass(FILE * lInfile){
             if(strcmp(lLabel, "\0") != 0) {
                 for (int j = 0; j < 21; j++) {
                     if (strcmp(lLabel, symbolTable[j].label) == 0) {
-                        //TODO: error stuff for duplicate symbol
+                        exit(4);
                     }
                 }
-                //TODO: figure out if you need to malloc for the symbol table, and see if this correctly adds stuff to it.
-                strcpy(symbolTable[i].label, lLabel); //possible error here but idk
+                strcpy(symbolTable[i].label, lLabel);
                 i++;
                 symbolTable[i].address = PC;
             }
@@ -190,29 +186,29 @@ int readAndParse( FILE * pInfile, char * pLine, char ** pLabel, char
         lPtr++;
 
     *lPtr = '\0';
-    if( !(lPtr = strtok( pLine, "\t\n ," ) ) )
+    if( !(lPtr = strtok( pLine, "\t\r\n ," ) ) )
         return( EMPTY_LINE );
 
     if( isOpcode( lPtr ) == -1 && lPtr[0] != '.' ) /* found a label */
     {
         *pLabel = lPtr;
-        if( !( lPtr = strtok( NULL, "\t\n ," ) ) ) return( OK );
+        if( !( lPtr = strtok( NULL, "\t\r\n ," ) ) ) return( OK );
     }
 
     *pOpcode = lPtr;
 
-    if( !( lPtr = strtok( NULL, "\t\n ," ) ) ) return( OK );
+    if( !( lPtr = strtok( NULL, "\t\r\n ," ) ) ) return( OK );
 
     *pArg1 = lPtr;
 
-    if( !( lPtr = strtok( NULL, "\t\n ," ) ) ) return( OK );
+    if( !( lPtr = strtok( NULL, "\t\r\n ," ) ) ) return( OK );
 
     *pArg2 = lPtr;
-    if( !( lPtr = strtok( NULL, "\t\n ," ) ) ) return( OK );
+    if( !( lPtr = strtok( NULL, "\t\r\n ," ) ) ) return( OK );
 
     *pArg3 = lPtr;
 
-    if( !( lPtr = strtok( NULL, "\t\n ," ) ) ) return( OK );
+    if( !( lPtr = strtok( NULL, "\t\r\n ," ) ) ) return( OK );
 
     *pArg4 = lPtr;
 
@@ -289,6 +285,9 @@ int isOpcode(char * opcode){
         return 0;
     }
     else if(strcmp(opcode, ".end")==0){
+        return 0;
+    }
+    else if(strcmp(opcode, "halt")==0){
         return 0;
     }
     else{
