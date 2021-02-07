@@ -27,7 +27,7 @@ int toNum(char * pStr);
 void firstPass(FILE * lInFile);
 void secondPass(FILE * lInfile, FILE * outFile);
 int isOpcode(char * opcode);
-void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, char * pArg4, FILE * outfile);
+void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, char * pArg3, char * pArg4, FILE * outfile);
 int readAndParse( FILE * pInfile, char * pLine, char ** pLabel, char
 ** pOpcode, char ** pArg1, char ** pArg2, char ** pArg3, char ** pArg4
 );
@@ -147,9 +147,6 @@ void firstPass(FILE * lInfile){
 
     int lRet;
     int PC = 0, i = 0;
-    //FILE * lInfile;
-
-    //lInfile = fopen( "data.in", "r" );	/* open the input file */
 
     do
     {
@@ -158,17 +155,18 @@ void firstPass(FILE * lInfile){
         if( lRet != DONE && lRet != EMPTY_LINE )
         {
             //check .ORIG for address, each line increment PC + 2
-            if(strcmp(lOpcode, ".orig") == 0) PC = toNum(lArg1);
+            if(strcmp(lOpcode, ".orig") == 0) PC = toNum(lArg1) - 2;
             if(strcmp(lLabel, "\0") != 0) {
                 for (int j = 0; j < 21; j++) {
                     if (strcmp(lLabel, symbolTable[j].label) == 0) {
-                        //TODO: error stuff for duplicate symbol
+                        printf("Error: Duplicate labels\n");
+                        exit(4);
                     }
                 }
-                //TODO: figure out if you need to malloc for the symbol table, and see if this correctly adds stuff to it.
-                strcpy(symbolTable[i].label, lLabel); //possible error here but idk
-                i++;
+                strcpy(symbolTable[i].label, lLabel);
                 symbolTable[i].address = PC;
+                i++;
+
             }
             PC += 2;
         }
@@ -181,11 +179,16 @@ void secondPass(FILE * lInfile, FILE * outFile){
     char lLine[MAX_LINE_LENGTH + 1], *lLabel, *lOpcode, *lArg1,
             *lArg2, *lArg3, *lArg4, *instrstring;
     int lRet;
-    int PC = 0, i = 0;
+
+    int currentAddress = 0;
+
     do{
         lRet = readAndParse(lInfile, lLine, &lLabel, &lOpcode, &lArg1, &lArg2, &lArg3, &lArg4);
-        buildMachineCode(lOpcode, lArg1, lArg2, lArg3, lArg4, outFile);
 
+        if(strcmp(lOpcode, ".orig") == 0) currentAddress = toNum(lArg1) - 2;
+        currentAddress +=2;
+
+        buildMachineCode(currentAddress, lOpcode, lArg1, lArg2, lArg3, lArg4, outFile);
 
     }while (lRet != DONE);
 }
@@ -324,12 +327,15 @@ int isOpcode(char * opcode){
     else if(strcmp(opcode, ".end")==0){
         return 0;
     }
+    else if(strcmp(opcode, "halt")==0){
+        return 0;
+    }
     else{
         return -1;
     }
 }
 
-void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, char * pArg4, FILE * outfile) {
+void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, char * pArg3, char * pArg4, FILE * outfile) {
     //make sure opcodes are valid
 
     if(isOpcode(pOpcode) == -1){
@@ -351,7 +357,7 @@ void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, 
     int *imm1_t;
     imm1_t = imm_1;
 
-    int imm_2_val;
+    int imm_2_val = -9999;
     int imm_2[11];
     int *imm2_t;
     imm2_t = imm_2;
@@ -393,13 +399,16 @@ void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, 
             printf("too many parameters");
             exit(4);
         }
-        printf("%s\n", pArg1);
+        printf("0%s\n", pArg1);
+        fprintf(outfile, "%s\n", pArg1);
         return;
 
     }
 
     else if (strcmp(pOpcode, "nop") == 0) {
         printf("0x0000\n");
+        fprintf(outfile, "0x0000\n");
+        return;
     }
 
         //****CODE FOR ADD BELOW****
@@ -485,11 +494,106 @@ void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, 
             binInst[14] = imm_3[9];
             binInst[15] = imm_3[10];
         } else exit(4);
-        for (int i = 1; i <= 16; i++) {
-            printf("%x", binInst[i - 1]);
-            if (i % 4 == 0) printf(" ");
+    }
+
+        //****CODE FOR BR BELOW****
+    else if (strcmp(pOpcode, "br") == 0  || strcmp(pOpcode, "brn") == 0 || strcmp(pOpcode, "brz") == 0
+             || strcmp(pOpcode, "brp") == 0 || strcmp(pOpcode, "brnz") == 0 || strcmp(pOpcode, "brnp") == 0
+             || strcmp(pOpcode, "brzp") == 0 || strcmp(pOpcode, "brnzp") == 0)
+    {
+        if(strcmp(pArg1, "") == 0 || strcmp(pArg2, "") != 0 ){
+            printf("error in arguments!");
+            exit(4);
         }
-        printf("\n");
+        else if(imm_1_val > 255 || imm_1_val < -256){
+            printf("out of allowed range");
+            exit(3);
+        }
+
+        binInst[0] = 0;
+        binInst[1] = 0;
+        binInst[2] = 0;
+        binInst[3] = 0;
+
+        if(strcmp(pOpcode, "br") == 0){
+            binInst[4] = 0;
+            binInst[5] = 0;
+            binInst[6] = 0;
+        }
+        else if(strcmp(pOpcode, "brn") == 0){
+            binInst[4] = 1;
+            binInst[5] = 0;
+            binInst[6] = 0;
+        }
+        else if(strcmp(pOpcode, "brz") == 0){
+            binInst[4] = 0;
+            binInst[5] = 1;
+            binInst[6] = 0;
+        }
+        else if(strcmp(pOpcode, "brp") == 0){
+            binInst[4] = 0;
+            binInst[5] = 0;
+            binInst[6] = 1;
+        }
+        else if(strcmp(pOpcode, "brnz") == 0){
+            binInst[4] = 1;
+            binInst[5] = 1;
+            binInst[6] = 0;
+        }
+        else if(strcmp(pOpcode, "brnp") == 0){
+            binInst[4] = 1;
+            binInst[5] = 0;
+            binInst[6] = 1;
+        }
+        else if(strcmp(pOpcode, "brzp") == 0){
+            binInst[4] = 0;
+            binInst[5] = 1;
+            binInst[6] = 1;
+        }
+        else if(strcmp(pOpcode, "brnzp") == 0){
+            binInst[4] = 1;
+            binInst[5] = 1;
+            binInst[6] = 1;
+        }
+
+        if(pArg1[0] == 'x' || pArg1[0] == '#') {
+            binInst[7] = imm_1[2];
+            binInst[8] = imm_1[3];
+            binInst[9] = imm_1[4];
+            binInst[10] = imm_1[5];
+            binInst[11] = imm_1[6];
+            binInst[12] = imm_1[7];
+            binInst[13] = imm_1[8];
+            binInst[14] = imm_1[9];
+            binInst[15] = imm_1[10];
+        }
+        else {
+            bool labelInTable = false;
+            for(int i = 0; i < 21; i++){
+                if(strcmp(symbolTable[i].label, pArg1) == 0){
+                    intToBin((symbolTable[i].address - address), imm1_t);
+                    labelInTable = true;
+                }
+            }
+            if(!labelInTable){
+                printf("label not found");
+                exit(4);
+            }
+            if(imm_1_val > 255 || imm_1_val < -256){
+                printf("out of allowed range");
+                exit(3);
+            }
+            binInst[7] = imm_1[2];
+            binInst[8] = imm_1[3];
+            binInst[9] = imm_1[4];
+            binInst[10] = imm_1[5];
+            binInst[11] = imm_1[6];
+            binInst[12] = imm_1[7];
+            binInst[13] = imm_1[8];
+            binInst[14] = imm_1[9];
+            binInst[15] = imm_1[10];
+        }
+
     }
 
         //****CODE FOR XOR BELOW****
@@ -592,6 +696,70 @@ void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, 
 
     }
 
+        //****CODE FOR JSR BELOW****
+    else if(strcmp(pOpcode, "jsr")==0) {
+        if (strcmp(pArg2, "") + strcmp(pArg3, "") + strcmp(pArg4, "") != 0) {
+            printf("too many parameters");
+            exit(4);
+        } else if (strcmp(pArg1, "") == 0 || isRegister(pArg1) == -1) {
+            printf("error in arguments!");
+            exit(4);
+        }
+        else if(imm_1_val > 1023 || imm_1_val < -1024){
+            printf("out of allowed range");
+            exit(3);
+        }
+
+        binInst[0] = 0;
+        binInst[1] = 1;
+        binInst[2] = 0;
+        binInst[3] = 0;
+
+        binInst[4] = 1;
+
+        if(pArg1[0] == 'x' || pArg1[0] == '#') {
+            binInst[5] = imm_1[0];
+            binInst[6] = imm_1[1];
+            binInst[7] = imm_1[2];
+            binInst[8] = imm_1[3];
+            binInst[9] = imm_1[4];
+            binInst[10] = imm_1[5];
+            binInst[11] = imm_1[6];
+            binInst[12] = imm_1[7];
+            binInst[13] = imm_1[8];
+            binInst[14] = imm_1[9];
+            binInst[15] = imm_1[10];
+        }
+        else {
+            bool labelInTable = false;
+            for(int i = 0; i < 21; i++){
+                if(strcmp(symbolTable[i].label, pArg1) == 0){
+                    intToBin((symbolTable[i].address - address), imm1_t);
+                    labelInTable = true;
+                }
+            }
+            if(!labelInTable){
+                printf("label not found");
+                exit(4);
+            }
+            if(imm_1_val > 1023 || imm_1_val < -1024){
+                printf("out of allowed range");
+                exit(3);
+            }
+            binInst[5] = imm_1[0];
+            binInst[6] = imm_1[1];
+            binInst[7] = imm_1[2];
+            binInst[8] = imm_1[3];
+            binInst[9] = imm_1[4];
+            binInst[10] = imm_1[5];
+            binInst[11] = imm_1[6];
+            binInst[12] = imm_1[7];
+            binInst[13] = imm_1[8];
+            binInst[14] = imm_1[9];
+            binInst[15] = imm_1[10];
+        }
+    }
+
     //****CODE FOR JSRR BELOW****
     else if(strcmp(pOpcode, "jsrr")==0){
         if(strcmp(pArg2, "")+strcmp(pArg3, "")+strcmp(pArg4, "")!=0){
@@ -684,6 +852,64 @@ void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, 
         binInst[13] = imm_3[8];
         binInst[14] = imm_3[9];
         binInst[15] = imm_3[10];
+    }
+
+        //**** CODE FOR LEA BELOW****
+    else if(strcmp(pOpcode, "lea")==0) {
+        if(isRegister(pArg1) == -1 || strcmp(pArg2, "") == 0 || strcmp(pArg3, "") != 0 ){
+            printf("incorrect parameters");
+            exit(4);
+        }
+        if(imm_2_val > 255 || imm_2_val < -256){
+            printf("out of allowed range");
+            exit(3);
+        }
+        binInst[0] = 1;
+        binInst[1] = 1;
+        binInst[2] = 1;
+        binInst[3] = 0;
+
+        binInst[4] = tempArg1[0]-48;
+        binInst[5] = tempArg1[1]-48;
+        binInst[6] = tempArg1[2]-48;
+
+        if(pArg2[0] == 'x' || pArg2[0] == '#') {
+            binInst[7] = imm_2[2];
+            binInst[8] = imm_2[3];
+            binInst[9] = imm_2[4];
+            binInst[10] = imm_2[5];
+            binInst[11] = imm_2[6];
+            binInst[12] = imm_2[7];
+            binInst[13] = imm_2[8];
+            binInst[14] = imm_2[9];
+            binInst[15] = imm_2[10];
+        }
+        else {
+            bool labelInTable = false;
+            for(int i = 0; i < 21; i++){
+                if(strcmp(symbolTable[i].label, pArg2) == 0){
+                    intToBin((symbolTable[i].address - address), imm2_t);
+                    labelInTable = true;
+                }
+            }
+            if(!labelInTable){
+                printf("label not found");
+                exit(4);
+            }
+            if(imm_2_val > 255 || imm_2_val < -256){
+                printf("out of allowed range");
+                exit(3);
+            }
+            binInst[7] = imm_2[2];
+            binInst[8] = imm_2[3];
+            binInst[9] = imm_2[4];
+            binInst[10] = imm_2[5];
+            binInst[11] = imm_2[6];
+            binInst[12] = imm_2[7];
+            binInst[13] = imm_2[8];
+            binInst[14] = imm_2[9];
+            binInst[15] = imm_2[10];
+        }
     }
 
     //****CODE FOR NOT BELOW****
@@ -915,11 +1141,6 @@ void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, 
         binInst[13] = imm_3[8];
         binInst[14] = imm_3[9];
         binInst[15] = imm_3[10];
-        for (int i = 1; i <= 16; i++) {
-            printf("%x", binInst[i - 1]);
-            if (i % 4 == 0) printf(" ");
-        }
-        printf("\n");
     }
 
     //****CODE FOR TRAP BELOW****
@@ -952,18 +1173,38 @@ void buildMachineCode(char * pOpcode, char * pArg1, char * pArg2, char * pArg3, 
         binInst[15] = imm_1[10];
 
     }
+    else if(strcmp(pOpcode, "halt")==0){
+        if(strcmp(pArg1, "")+strcmp(pArg2, "")+strcmp(pArg3, "")){
+            printf("too many parameters");
+            exit(4);
+        }
+        fprintf(outfile, "0xF025\n");
+        return;
+    }
 
     if(strcmp(pOpcode, ".end")==0){
-        exit(0);
+        return;
     }
-    char * hexInst;
+    char * nibble0 = (char*)malloc(sizeof(char)*5);
+    char * nibble1 = (char*)malloc(sizeof(char)*5);
+    char * nibble2 = (char*)malloc(sizeof(char)*5);
+    char * nibble3 = (char*)malloc(sizeof(char)*5);
 
-
-    if(strcmp(pOpcode, ".orig")!=0){
-        //TODO: CONVERSION OF 16BIT ARR TO STRING GOES HERE
+    if(strcmp(pOpcode, ".orig")!=0 && strcmp(pOpcode, ".fill")!=0){
+        int j = 4; int k = 8; int l = 12;
+        for(int idx = 0; idx < 4; idx++){
+            nibble0[idx] = binInst[idx]+48;
+            nibble1[idx] = binInst[idx+j]+48;
+            nibble2[idx] = binInst[idx+k]+48;
+            nibble3[idx] = binInst[idx+l]+48;
+        }
+        nibble0[4] = '\0'; nibble1[4] = '\0'; nibble2[4] = '\0'; nibble3[4] = '\0';
+        printf("%s %s %s %s", nibble0, nibble1, nibble2, nibble3);
+        fprintf(outfile, "0x%s%s%s%s\n", bin2hexchar(nibble0), bin2hexchar(nibble1), bin2hexchar(nibble2), bin2hexchar(nibble3));
     }
-    //fprintf(outfile, "\n");
     printf("\n");
+    free(nibble0); free(nibble1); free(nibble2); free(nibble3);
+    return;
 }
 
 int isRegister(char * reg){
@@ -1046,54 +1287,23 @@ void intToBin(int progarg, int * outArr){
     }
 
 }
-/*
-char * bin2hex(int instrs[16]){
-    char nibble[4];
-    char * nibble_t;
-    //char * instrstring = NULL;
-    char* instrstring = "0x";
-    for(int i = 0; i < 4; i++){
-        nibble[i] = instrs[i]+48;
-    }
-    strcat(instrstring, bin2hexchar(nibble_t));/*
 
-    for(int i = 4; i < 7; i++){
-        nibble[i] = instrs[i]+48;
-    }
-    strcat(instrstring, bin2hexchar(nibble));
-
-    for(int i = 8; i < 11; i++){
-        nibble[i] = instrs[i]+48;
-    }
-    strcat(instrstring, bin2hexchar(nibble));
-
-    for(int i = 12; i < 15; i++){
-        nibble[i] = instrs[i]+48;
-    }
-    strcat(instrstring, bin2hexchar(nibble));
-    printf("%s\n", instrstring);
-
-    return instrstring;
-}
 
 char * bin2hexchar(char * input){
-    if(strcmp(input, "0000")) return "0";
-    if(strcmp(input, "0000")) return "1";
-    if(strcmp(input, "0000")) return "2";
-    if(strcmp(input, "0000")) return "3";
-    if(strcmp(input, "0000")) return "4";
-    if(strcmp(input, "0000")) return "5";
-    if(strcmp(input, "0000")) return "6";
-    if(strcmp(input, "0000")) return "7";
-    if(strcmp(input, "0000")) return "8";
-    if(strcmp(input, "0000")) return "9";
-    if(strcmp(input, "0000")) return "A";
-    if(strcmp(input, "0000")) return "B";
-    if(strcmp(input, "0000")) return "C";
-    if(strcmp(input, "0000")) return "D";
-    if(strcmp(input, "0000")) return "E";
-    if(strcmp(input, "0000")) return "F";
-
-
+    if(strcmp(input, "0000")==0) return "0";
+    if(strcmp(input, "0001")==0) return "1";
+    if(strcmp(input, "0010")==0) return "2";
+    if(strcmp(input, "0011")==0) return "3";
+    if(strcmp(input, "0100")==0) return "4";
+    if(strcmp(input, "0101")==0) return "5";
+    if(strcmp(input, "0110")==0) return "6";
+    if(strcmp(input, "0111")==0) return "7";
+    if(strcmp(input, "1000")==0) return "8";
+    if(strcmp(input, "1001")==0) return "9";
+    if(strcmp(input, "1010")==0) return "A";
+    if(strcmp(input, "1011")==0) return "B";
+    if(strcmp(input, "1100")==0) return "C";
+    if(strcmp(input, "1101")==0) return "D";
+    if(strcmp(input, "1110")==0) return "E";
+    if(strcmp(input, "1111")==0) return "F";
 }
-*/
