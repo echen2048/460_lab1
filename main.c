@@ -37,6 +37,10 @@ void intToBin(int progarg, int * outArr);
 char * bin2hex(int instrs[16]);
 char * bin2hexchar(char * input);
 
+int first_pass_end = -1;
+int reach_end = -1;
+
+
 int main(int argc, char* argv[]) {
     if(argc != 4){
         printf("Insufficient Arguments");
@@ -156,8 +160,21 @@ void firstPass(FILE * lInfile){
         {
             //check .ORIG for address, each line increment PC + 2
             if(strcmp(lOpcode, ".orig") == 0) PC = toNum(lArg1) - 2;
+            if(strcmp(lOpcode, ".end")==0) first_pass_end = 1;
             if(strcmp(lLabel, "\0") != 0) {
-                for (int j = 0; j < 21; j++) {
+                for(int i = 0; i < strlen(lLabel); i++){
+                    if(isalnum(lLabel[i]) == 0){
+                        printf("invalid label: needs to be alphanumeric");
+                        exit(4);
+                    }
+                }
+                if(lLabel[0] == 'x'){
+                    printf("invalid label: cannot start with x");
+                    exit(4);
+                }
+            }
+            if(strcmp(lLabel, "\0") != 0) {
+                for (int j = 0; j < MAX_SYMBOLS; j++) {
                     if (strcmp(lLabel, symbolTable[j].label) == 0) {
                         printf("Error: Duplicate labels\n");
                         exit(4);
@@ -170,7 +187,7 @@ void firstPass(FILE * lInfile){
             }
             PC += 2;
         }
-    } while( lRet != DONE );
+    } while( lRet != DONE && first_pass_end == -1 );
 
     rewind(lInfile);
 }
@@ -330,6 +347,9 @@ int isOpcode(char * opcode){
     else if(strcmp(opcode, "halt")==0){
         return 0;
     }
+    else if(strcmp(opcode, "nop")==0){
+        return 0;
+    }
     else{
         return -1;
     }
@@ -337,8 +357,9 @@ int isOpcode(char * opcode){
 
 void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, char * pArg3, char * pArg4, FILE * outfile) {
     //make sure opcodes are valid
-
-    if(isOpcode(pOpcode) == -1){
+    if(reach_end == 1) return;
+    if(strcmp(pOpcode,"")==0) return;
+    else if(isOpcode(pOpcode) == -1){
         printf("invalid opcode detected!");
         exit(2);
     }
@@ -399,10 +420,24 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
             printf("too many parameters");
             exit(4);
         }
-        printf("0%s\n", pArg1);
-        fprintf(outfile, "%s\n", pArg1);
+        else if(toNum(pArg1) % 2 == 1){
+            printf(".orig must be even");
+            exit(3);
+        }
+        printf("0x%x\n", toNum(pArg1));
+        fprintf(outfile, "0x%04x\n", toNum(pArg1));
         return;
 
+    }
+
+    else if (strcmp(pOpcode, ".fill") == 0) {
+        if(strcmp(pArg2, "")+strcmp(pArg3, "")+strcmp(pArg4, "")!=0){
+            printf("too many parameters");
+            exit(4);
+        }
+        printf("0x%x\n", toNum(pArg1));
+        fprintf(outfile, "0x%04x\n", toNum(pArg1));
+        return;
     }
 
     else if (strcmp(pOpcode, "nop") == 0) {
@@ -457,7 +492,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
 
 
 
-    //****CODE FOR AND BELOW****
+        //****CODE FOR AND BELOW****
     else if (strcmp(pOpcode, "and") == 0) {
         binInst[0] = 0;
         binInst[1] = 1;
@@ -505,7 +540,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
             printf("error in arguments!");
             exit(4);
         }
-        else if(imm_1_val > 255 || imm_1_val < -256){
+        else if((imm_1_val > 127 || imm_1_val < -128) && imm_1_val != -9999){
             printf("out of allowed range");
             exit(3);
         }
@@ -516,9 +551,9 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[3] = 0;
 
         if(strcmp(pOpcode, "br") == 0){
-            binInst[4] = 0;
-            binInst[5] = 0;
-            binInst[6] = 0;
+            binInst[4] = 1;
+            binInst[5] = 1;
+            binInst[6] = 1;
         }
         else if(strcmp(pOpcode, "brn") == 0){
             binInst[4] = 1;
@@ -569,9 +604,10 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         }
         else {
             bool labelInTable = false;
-            for(int i = 0; i < 21; i++){
+            for(int i = 0; i < MAX_SYMBOLS; i++){
                 if(strcmp(symbolTable[i].label, pArg1) == 0){
-                    intToBin((symbolTable[i].address - address), imm1_t);
+                    imm_1_val = (symbolTable[i].address - address)/2;
+                    intToBin(imm_1_val, imm1_t);
                     labelInTable = true;
                 }
             }
@@ -579,7 +615,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
                 printf("label not found");
                 exit(4);
             }
-            if(imm_1_val > 255 || imm_1_val < -256){
+            if((imm_1_val > 127 || imm_1_val < -128) && imm_1_val != -9999){
                 printf("out of allowed range");
                 exit(3);
             }
@@ -640,7 +676,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
 
     }
 
-    //**** CODE FOR RTI BELOW****
+        //**** CODE FOR RTI BELOW****
     else if (strcmp(pOpcode, "rti") == 0) {
         if(strcmp(pArg1, "")+strcmp(pArg2, "")+strcmp(pArg3, "")+strcmp(pArg4, "")!=0){
             printf("too many parameters");
@@ -664,7 +700,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[15] = 0;
     }
 
-    //****CODE FOR JMP BELOW****
+        //****CODE FOR JMP BELOW****
     else if(strcmp(pOpcode, "jmp")==0){
         if(strcmp(pArg2, "")+strcmp(pArg3, "")+strcmp(pArg4, "")!=0){
             printf("too many parameters");
@@ -705,7 +741,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
             printf("error in arguments!");
             exit(4);
         }
-        else if(imm_1_val > 1023 || imm_1_val < -1024){
+        else if((imm_1_val > 511 || imm_1_val < -512) && imm_1_val != -9999){
             printf("out of allowed range");
             exit(3);
         }
@@ -732,9 +768,10 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         }
         else {
             bool labelInTable = false;
-            for(int i = 0; i < 21; i++){
+            for(int i = 0; i < MAX_SYMBOLS; i++){
                 if(strcmp(symbolTable[i].label, pArg1) == 0){
-                    intToBin((symbolTable[i].address - address), imm1_t);
+                    imm_1_val = (symbolTable[i].address - address)/2;
+                    intToBin(imm_1_val, imm1_t);
                     labelInTable = true;
                 }
             }
@@ -742,7 +779,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
                 printf("label not found");
                 exit(4);
             }
-            if(imm_1_val > 1023 || imm_1_val < -1024){
+            if((imm_1_val > 511 || imm_1_val < -512) && imm_1_val != -9999){
                 printf("out of allowed range");
                 exit(3);
             }
@@ -760,7 +797,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         }
     }
 
-    //****CODE FOR JSRR BELOW****
+        //****CODE FOR JSRR BELOW****
     else if(strcmp(pOpcode, "jsrr")==0){
         if(strcmp(pArg2, "")+strcmp(pArg3, "")+strcmp(pArg4, "")!=0){
             printf("too many parameters");
@@ -792,7 +829,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
 
     }
 
-    //**** CODE FOR LDB BELOW****
+        //**** CODE FOR LDB BELOW****
     else if(strcmp(pOpcode, "ldb")==0){
         if(isRegister(pArg1)== -1 || isRegister(pArg2)==-1 || imm_3_val == -9999){
             printf("dr sr not specified or no offset");
@@ -823,7 +860,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[15] = imm_3[10];
     }
 
-    //**** CODE FOR LDW BELOW****
+        //**** CODE FOR LDW BELOW****
     else if(strcmp(pOpcode, "ldw")==0){
         if(isRegister(pArg1)== -1 || isRegister(pArg2)==-1 || imm_3_val == -9999){
             printf("dr sr not specified or no offset");
@@ -860,7 +897,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
             printf("incorrect parameters");
             exit(4);
         }
-        if(imm_2_val > 255 || imm_2_val < -256){
+        if((imm_2_val > 127 || imm_2_val < -128) && imm_2_val != -9999){
             printf("out of allowed range");
             exit(3);
         }
@@ -886,9 +923,10 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         }
         else {
             bool labelInTable = false;
-            for(int i = 0; i < 21; i++){
+            for(int i = 0; i < MAX_SYMBOLS; i++){
                 if(strcmp(symbolTable[i].label, pArg2) == 0){
-                    intToBin((symbolTable[i].address - address), imm2_t);
+                    imm_2_val = (symbolTable[i].address - address)/2;
+                    intToBin(imm_2_val, imm2_t);
                     labelInTable = true;
                 }
             }
@@ -896,7 +934,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
                 printf("label not found");
                 exit(4);
             }
-            if(imm_2_val > 255 || imm_2_val < -256){
+            if((imm_2_val > 127 || imm_2_val < -128) && imm_2_val != -9999){
                 printf("out of allowed range");
                 exit(3);
             }
@@ -912,7 +950,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         }
     }
 
-    //****CODE FOR NOT BELOW****
+        //****CODE FOR NOT BELOW****
     else if(strcmp(pOpcode,"not")==0){
         if(isRegister(pArg1)== -1 || isRegister(pArg2)==-1 || strcmp(pArg3,"")!=0){
             printf("incorrect parameters");
@@ -939,7 +977,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[15] = 1;
     }
 
-    //**** CODE FOR RET BELOW****
+        //**** CODE FOR RET BELOW****
     else if (strcmp(pOpcode, "ret") == 0) {
         if(strcmp(pArg1, "")+strcmp(pArg2, "")+strcmp(pArg3, "")!=0){
             printf("too many parameters");
@@ -963,7 +1001,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[15] = 0;
     }
 
-    //**** CODE FOR LSHF BELOW****
+        //**** CODE FOR LSHF BELOW****
     else if(strcmp(pOpcode, "lshf")==0){
         if(isRegister(pArg1)== -1 || isRegister(pArg2)==-1 || imm_3_val == -9999){
             printf("dr sr not specified or no offset");
@@ -1000,7 +1038,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[15] = imm_3[10];
     }
 
-    //**** CODE FOR RSHFL BELOW****
+        //**** CODE FOR RSHFL BELOW****
     else if(strcmp(pOpcode, "rshfl")==0){
         if(isRegister(pArg1)== -1 || isRegister(pArg2)==-1 || imm_3_val == -9999){
             printf("dr sr not specified or no offset");
@@ -1038,7 +1076,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
 
     }
 
-    //****CODE FOR RSHFA BELOW****
+        //****CODE FOR RSHFA BELOW****
     else if(strcmp(pOpcode, "rshfa")==0){
         if(isRegister(pArg1)== -1 || isRegister(pArg2)==-1 || imm_3_val == -9999){
             printf("dr sr not specified or no offset");
@@ -1075,7 +1113,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[15] = imm_3[10];
     }
 
-    //**** CODE FOR STB BELOW****
+        //**** CODE FOR STB BELOW****
     else if(strcmp(pOpcode, "STB")==0){
         if(isRegister(pArg1)== -1 || isRegister(pArg2)==-1 || imm_3_val == -9999){
             printf("dr sr not specified or no offset");
@@ -1109,7 +1147,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[15] = imm_3[10];
     }
 
-    //**** CODE FOR STW BELOW****
+        //**** CODE FOR STW BELOW****
     else if(strcmp(pOpcode, "stw")==0){
         if(isRegister(pArg1)== -1 || isRegister(pArg2)==-1 || imm_3_val == -9999){
             printf("dr sr not specified or no offset");
@@ -1143,7 +1181,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
         binInst[15] = imm_3[10];
     }
 
-    //****CODE FOR TRAP BELOW****
+        //****CODE FOR TRAP BELOW****
     else if(strcmp(pOpcode, "trap")==0){
         if(strcmp(pArg2,"")!=0 || strcmp(pArg3,"")!=0 || strcmp(pArg1,"") == 0){
             printf("invalid paramaters");
@@ -1183,6 +1221,7 @@ void buildMachineCode(int address, char * pOpcode, char * pArg1, char * pArg2, c
     }
 
     if(strcmp(pOpcode, ".end")==0){
+        reach_end = 1;
         return;
     }
     char * nibble0 = (char*)malloc(sizeof(char)*5);
